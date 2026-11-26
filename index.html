@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>ระบบสุริยะ AR</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar.js"></script>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;font-family:Prompt,sans-serif;background:#000}
+  .ui{position:fixed;left:0;right:0;z-index:10;color:#fff;pointer-events:none}
+  .top{top:0;padding:12px 16px;background:linear-gradient(#101638ee,#10163800)}
+  .top h1{margin:0;font-size:20px;color:#ffcd28}
+  #status{margin-top:4px;font-size:14px;display:inline-block;padding:4px 10px;border-radius:99px;background:#ffffff26}
+  #status.ok{background:#1f9d55}
+  .bottom{bottom:0;padding:10px 0 calc(12px + env(safe-area-inset-bottom));background:linear-gradient(#10163800,#101638f2 35%)}
+  #card{pointer-events:auto;margin:0 12px 10px;padding:12px 14px;border-radius:14px;background:#ffffffee;color:#101638;display:none;max-height:38vh;overflow:auto}
+  #card h2{margin:0 0 6px;font-size:18px;display:flex;align-items:center;gap:8px}
+  #card .dot{width:16px;height:16px;border-radius:50%}
+  #card dl{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;margin:0 0 6px;font-size:14px}
+  #card dt{color:#555}#card dd{margin:0;font-weight:600}
+  #card p{margin:0;font-size:14px;line-height:1.5}
+  #close{float:right;border:0;background:#101638;color:#fff;border-radius:99px;width:30px;height:30px;font-size:16px}
+  .chips{pointer-events:auto;display:flex;gap:8px;overflow-x:auto;padding:0 12px;scrollbar-width:none}
+  .chips button{flex:none;font:inherit;font-size:15px;padding:9px 14px;border-radius:99px;border:2px solid #ffffff55;background:#ffffff1f;color:#fff;display:flex;align-items:center;gap:6px}
+  .chips button.on{background:#ffcd28;color:#101638;border-color:#ffcd28}
+  .chips i{width:12px;height:12px;border-radius:50%;display:inline-block}
+  .ctrl{pointer-events:auto;display:flex;gap:8px;padding:8px 12px 0}
+  .ctrl button{font:inherit;font-size:14px;padding:7px 12px;border-radius:10px;border:0;background:#ffffff2e;color:#fff}
+</style>
+</head>
+<body>
+<div class="ui top">
+  <h1>ระบบสุริยะ AR</h1>
+  <span id="status">กำลังค้นหาภาพ target… ส่องให้เห็นกรอบดำทั้งกรอบ</span>
+</div>
+
+<a-scene embedded vr-mode-ui="enabled:false" loading-screen="enabled:false"
+  renderer="logarithmicDepthBuffer:true;antialias:true;colorManagement:true"
+  arjs="sourceType:webcam;debugUIEnabled:false;detectionMode:mono;patternRatio:0.5">
+  <a-marker id="marker" type="pattern" url="solar.patt" smooth="true" smoothCount="5" smoothTolerance="0.01" smoothThreshold="2" emitevents="true">
+    <a-entity id="system" position="0 0.55 0" scale="0.4 0.4 0.4"></a-entity>
+  </a-marker>
+  <a-entity camera></a-entity>
+</a-scene>
+
+<div class="ui bottom">
+  <div id="card"><button id="close" aria-label="ปิด">✕</button><div id="cardBody"></div></div>
+  <div class="chips" id="chips"></div>
+  <div class="ctrl">
+    <button id="pause">⏸ หยุดโคจร</button>
+    <button id="speed">ความเร็ว ×1</button>
+  </div>
+</div>
+
+<script>
+{
+const P=[
+ {id:'sun',th:'ดวงอาทิตย์',col:'#ffb300',r:0.42,orb:0,
+  rows:[['ประเภท','ดาวฤกษ์'],['เส้นผ่านศูนย์กลาง','≈ 1.39 ล้าน กม. (≈109 เท่าของโลก)'],['อุณหภูมิผิว','≈ 5,500 °C']],
+  fact:'มีมวลมากกว่า 99% ของมวลทั้งระบบสุริยะ แรงโน้มถ่วงของดวงอาทิตย์จึงดึงให้ดาวทุกดวงโคจรรอบมัน'},
+ {id:'mercury',th:'ดาวพุธ',col:'#9e9e9e',r:0.07,orb:0.7,days:88,
+  rows:[['ระยะจากดวงอาทิตย์','0.39 AU'],['เส้นผ่านศูนย์กลาง','4,879 กม.'],['โคจรรอบดวงอาทิตย์','88 วัน'],['ดวงจันทร์','0 ดวง']],
+  fact:'ใกล้ดวงอาทิตย์ที่สุด กลางวันร้อนราว 430 °C แต่กลางคืนเย็นถึง −180 °C เพราะแทบไม่มีบรรยากาศเก็บความร้อน'},
+ {id:'venus',th:'ดาวศุกร์',col:'#e8c37a',r:0.12,orb:0.95,days:225,
+  rows:[['ระยะจากดวงอาทิตย์','0.72 AU'],['เส้นผ่านศูนย์กลาง','12,104 กม.'],['โคจรรอบดวงอาทิตย์','225 วัน'],['ดวงจันทร์','0 ดวง']],
+  fact:'ร้อนที่สุดในระบบสุริยะ (≈465 °C) เพราะบรรยากาศคาร์บอนไดออกไซด์หนาแน่นเกิดปรากฏการณ์เรือนกระจก และหมุนรอบตัวเองสวนทางกับดาวส่วนใหญ่'},
+ {id:'earth',th:'โลก',col:'#2f7de1',r:0.13,orb:1.25,days:365,
+  rows:[['ระยะจากดวงอาทิตย์','1 AU (≈150 ล้าน กม.)'],['เส้นผ่านศูนย์กลาง','12,742 กม.'],['โคจรรอบดวงอาทิตย์','365.25 วัน'],['ดวงจันทร์','1 ดวง']],
+  fact:'ดาวดวงเดียวที่รู้ว่ามีสิ่งมีชีวิต พื้นผิวประมาณ 71% ปกคลุมด้วยน้ำ'},
+ {id:'mars',th:'ดาวอังคาร',col:'#d2492f',r:0.09,orb:1.55,days:687,
+  rows:[['ระยะจากดวงอาทิตย์','1.52 AU'],['เส้นผ่านศูนย์กลาง','6,779 กม.'],['โคจรรอบดวงอาทิตย์','687 วัน'],['ดวงจันทร์','2 ดวง (โฟบอส, ดีมอส)']],
+  fact:'สีแดงมาจากออกไซด์ของเหล็ก (สนิม) บนพื้นผิว และมีภูเขาไฟโอลิมปัสมอนส์ ซึ่งสูงที่สุดในระบบสุริยะ'},
+ {id:'jupiter',th:'ดาวพฤหัสบดี',col:'#d9a066',r:0.3,orb:2.05,days:4333,
+  rows:[['ระยะจากดวงอาทิตย์','5.2 AU'],['เส้นผ่านศูนย์กลาง','139,820 กม.'],['โคจรรอบดวงอาทิตย์','≈ 11.9 ปี'],['ประเภท','ดาวเคราะห์แก๊สยักษ์']],
+  fact:'ใหญ่ที่สุดในระบบสุริยะ ใส่โลกได้มากกว่า 1,300 ดวง จุดแดงใหญ่คือพายุที่ใหญ่กว่าโลกทั้งใบ'},
+ {id:'saturn',th:'ดาวเสาร์',col:'#e3c27d',r:0.25,orb:2.65,days:10759,ring:true,
+  rows:[['ระยะจากดวงอาทิตย์','9.5 AU'],['เส้นผ่านศูนย์กลาง','116,460 กม.'],['โคจรรอบดวงอาทิตย์','≈ 29.5 ปี'],['ประเภท','ดาวเคราะห์แก๊สยักษ์']],
+  fact:'วงแหวนประกอบด้วยก้อนน้ำแข็งและหินนับไม่ถ้วน และมีความหนาแน่นเฉลี่ยน้อยกว่าน้ำ'},
+ {id:'uranus',th:'ดาวยูเรนัส',col:'#7fd6e0',r:0.18,orb:3.15,days:30687,
+  rows:[['ระยะจากดวงอาทิตย์','19.2 AU'],['เส้นผ่านศูนย์กลาง','50,724 กม.'],['โคจรรอบดวงอาทิตย์','≈ 84 ปี'],['ประเภท','ดาวเคราะห์น้ำแข็งยักษ์']],
+  fact:'แกนหมุนเอียงเกือบ 98° จึงดูเหมือน “กลิ้ง” ไปตามวงโคจร สีฟ้าอมเขียวมาจากแก๊สมีเทน'},
+ {id:'neptune',th:'ดาวเนปจูน',col:'#3f5fd8',r:0.17,orb:3.6,days:60190,
+  rows:[['ระยะจากดวงอาทิตย์','30.1 AU'],['เส้นผ่านศูนย์กลาง','49,244 กม.'],['โคจรรอบดวงอาทิตย์','≈ 165 ปี'],['ประเภท','ดาวเคราะห์น้ำแข็งยักษ์']],
+  fact:'ไกลดวงอาทิตย์ที่สุด และมีลมแรงที่สุดในระบบสุริยะ เร็วกว่า 2,000 กม./ชม.'}
+];
+// เวลาโคจรในฉาก: ใช้ค่ารากที่สองของคาบจริงเพื่อให้ดาวรอบนอกยังเห็นการเคลื่อนที่ (ลำดับเร็ว–ช้าถูกต้อง)
+const BASE=1400;
+let speed=1,paused=false;
+AFRAME.registerComponent('orbit',{schema:{dur:{default:10000},start:{default:0}},
+  init(){this.a=this.data.start},
+  tick(t,dt){if(paused||!dt)return;this.a=(this.a+360*Math.min(dt,100)/this.data.dur*speed)%360;this.el.object3D.rotation.y=THREE.MathUtils.degToRad(this.a)}});
+const sys=document.querySelector('#system');
+const mk=(tag,attrs)=>{const e=document.createElement(tag);for(const k in attrs)e.setAttribute(k,attrs[k]);return e};
+const bodies={};
+
+P.forEach((p,i)=>{
+  if(!p.orb){
+    const s=mk('a-sphere',{radius:p.r,material:`shader:flat;color:${p.col}`,'segments-width':32,'segments-height':24});
+    s.appendChild(mk('a-sphere',{radius:p.r*1.25,material:'shader:flat;color:#ffd54f;opacity:0.25;transparent:true'}));
+    s.setAttribute('animation','property:rotation;to:0 360 0;loop:true;dur:20000;easing:linear');
+    sys.appendChild(s);bodies[p.id]=s;return;
+  }
+  sys.appendChild(mk('a-ring',{'radius-inner':p.orb-0.008,'radius-outer':p.orb+0.008,rotation:'-90 0 0',material:'shader:flat;color:#ffffff;opacity:0.35;transparent:true;side:double','segments-theta':96}));
+  const o=mk('a-entity',{orbit:`dur:${Math.round(BASE*Math.sqrt(p.days))};start:${i*47}`});
+  const b=mk('a-sphere',{position:`${p.orb} 0 0`,radius:p.r,color:p.col,'segments-width':24,'segments-height':16});
+  if(p.ring) b.appendChild(mk('a-ring',{'radius-inner':p.r*1.35,'radius-outer':p.r*2.1,rotation:'-70 0 0',material:'color:#cdb27a;opacity:0.85;transparent:true;side:double'}));
+  if(p.id==='earth'){
+    const m=mk('a-entity',{orbit:'dur:3000'});
+    m.appendChild(mk('a-sphere',{position:`${p.r+0.1} 0 0`,radius:0.035,color:'#dddddd'}));
+    b.appendChild(m);
+  }
+  o.appendChild(b);sys.appendChild(o);bodies[p.id]=b;
+});
+sys.appendChild(mk('a-light',{type:'point',intensity:1.6,distance:12,color:'#fff4dc'}));
+sys.parentNode.appendChild(mk('a-light',{type:'ambient',intensity:0.45}));
+
+// UI
+const chips=document.getElementById('chips'),card=document.getElementById('card'),body=document.getElementById('cardBody');
+chips.innerHTML=P.map(p=>`<button data-id="${p.id}"><i style="background:${p.col}"></i>${p.th}</button>`).join('');
+let cur=null;
+function select(id){
+  if(cur&&bodies[cur]) bodies[cur].setAttribute('scale','1 1 1');
+  chips.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.id===id));
+  cur=id;
+  if(!id){card.style.display='none';return}
+  const p=P.find(x=>x.id===id);
+  body.innerHTML=`<h2><span class="dot" style="background:${p.col}"></span>${p.th}</h2><dl>${p.rows.map(r=>`<dt>${r[0]}</dt><dd>${r[1]}</dd>`).join('')}</dl><p>${p.fact}</p>`;
+  card.style.display='block';
+  bodies[id].setAttribute('scale',id==='sun'?'1.3 1.3 1.3':'2.2 2.2 2.2');
+}
+chips.addEventListener('click',e=>{const b=e.target.closest('button');if(b)select(cur===b.dataset.id?null:b.dataset.id)});
+document.getElementById('close').addEventListener('click',()=>select(null));
+
+document.getElementById('pause').addEventListener('click',e=>{paused=!paused;e.target.textContent=paused?'▶ เล่นต่อ':'⏸ หยุดโคจร'});
+const speeds=[1,2,4,0.5];let si=0;
+document.getElementById('speed').addEventListener('click',e=>{si=(si+1)%speeds.length;speed=speeds[si];e.target.textContent='ความเร็ว ×'+speed});
+
+const st=document.getElementById('status'),marker=document.getElementById('marker');
+marker.addEventListener('markerFound',()=>{st.textContent='เจอภาพแล้ว! แตะชื่อดาวด้านล่างเพื่อดูข้อมูล';st.classList.add('ok')});
+marker.addEventListener('markerLost',()=>{st.textContent='ภาพหลุดจากกล้อง… ส่องให้เห็นกรอบดำทั้งกรอบ';st.classList.remove('ok')});
+}
+</script>
+</body>
+</html>
